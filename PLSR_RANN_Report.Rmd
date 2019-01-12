@@ -10,8 +10,6 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
-
-
 ```{r load RANN Data, echo=FALSE, include = FALSE}
 # RQ: Is there an association between Cortical Thickness and Subcortical Volume? i.e can Cortical thickness predict cortical volume ?
 
