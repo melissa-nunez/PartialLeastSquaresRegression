@@ -1,0 +1,132 @@
+---
+title: "Applying Partial Least Squares Regression (PLSR) To Explore Associations Between Cortical Thickness and Subvolume Using RANN Data"
+author: "Melissa Nunez"
+date: "10/15/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+
+```{r load RANN Data, echo=FALSE, include = FALSE}
+# RQ: Is there an association between Cortical Thickness and Subcortical Volume? i.e can Cortical thickness predict cortical volume ?
+
+#install.packages("caret")
+library(caret)
+library(pls)
+library(ggplot2)
+library(readxl)
+library(knitr)
+library(kableExtra)
+library(gplots)
+
+load("/Users/user/Dropbox/Melissa/PLSR/RANN_Data/data_creation_faMNI_sub2_fsaverages_volume_n173_20180817.Rdata")
+
+```
+
+
+
+```{r Step 3: Find optimal ncomps for each PLSR, echo=FALSE, include = FALSE}
+
+# Bootstrap sample data 100 times
+resamples <- lapply(1:100, function(i) sample(nrow(fs.thickness.resid), replace = T))
+
+# Function takes in predictors, response, and indexes of data (nums) for subsetting the predictors and response, then finds optimal number of components for plsr for each set of data, and returns coefficients of the plsr using the optimal number of components.
+plsr_opt_coef <- function(x,y,nums)
+  {
+
+j=1
+l <- list()
+
+for (i in 1:100) {
+
+x_boot <- x[nums[[i]],] 
+y_boot <- y[nums[[i]],]
+  
+org_mod <- plsr(y_boot~x_boot, ncomp = 10, validation = "CV", segments = 5)
+
+numcomps <- data.frame(sapply(1:10, function(x)(rowSums(data.frame(MSEP(org_mod, ncomp = x, intercept = FALSE)$val))/length(colnames(y)))[1]))
+numcomps <- (cbind(c(1:10),numcomps))
+names(numcomps) <- c("ncomp","Avg_MSEP")
+min <- min(numcomps[,2])
+opt_ncomps <- numcomps[numcomps$Avg_MSEP == min,][[1]]
+
+
+coef_model <- coef(org_mod, ncomp = opt_ncomps)
+
+l[[i]] <- coef_model
+    j <- j + 1
+    
+}
+
+list_opt_coefs <- l
+assign("list_opt_coefs",list_opt_coefs,.GlobalEnv)
+
+}
+
+
+opt_coef_model <- plsr_opt_coef(fs.thickness.resid, fs.subvol.resid, resamples)
+
+
+# Calculate mean and standard deviation of each coefficient
+vec <- unlist(list_opt_coefs, use.names = FALSE)
+DIM <- dim(list_opt_coefs[[1]])
+n <- length(list_opt_coefs)
+
+list.mean <- tapply(vec, rep(1:prod(DIM),times = n), mean)
+attr(list.mean, "dim") <- DIM
+list.mean <- as.data.frame(list.mean)
+
+list.sd <- tapply(vec, rep(1:prod(DIM),times = n), sd)
+attr(list.sd, "dim") <- DIM
+list.sd <- as.data.frame(list.sd)
+
+# Calculate z-score for each coeefficient
+z.score_mat <- list.mean/list.sd
+
+colnames(z.score_mat) <- colnames(fs.subvol.resid)
+rownames(z.score_mat) <- colnames(fs.thickness.resid)
+
+
+thresh=as.matrix(z.score_mat)
+thresh[abs(thresh)<1.96]<-0
+thresh <- thresh[as.logical(rowSums(thresh != 0)), as.logical(colSums(thresh != 0))]
+```
+
+
+#### Descriptive Statistics: Gender and Education
+```{r report, echo = FALSE, warning=FALSE, message = FALSE}
+Count.Gender <- addmargins(table(fsdat$Gender))
+Count.Gender <- data.frame(c("Female","Male","Total"), c(99,74,173))
+colnames(Count.Gender) <- c("Gender","Count")
+Count.Gender %>%
+  kable() %>%
+    kable_styling(bootstrap_options = "striped")
+
+Edu.Summary <- data.frame(as.matrix(round(summary(fsdat$Education),2)))
+colnames(Edu.Summary) <- c("Years of Education")
+Edu.Summary %>%
+  kable() %>%
+    kable_styling(bootstrap_options = "striped")
+```
+
+
+#### Age Summary
+```{r statreport, echo = FALSE, echo = FALSE, warning=FALSE, message = FALSE}
+Age.Summary <- data.frame(as.matrix(round(summary(fsdat$Age),2)))
+colnames(Age.Summary) <- c("Baseline Age")
+Age.Summary %>%
+  kable() %>%
+    kable_styling(bootstrap_options = "striped")
+```
+
+RANN data was used to explore associations between cortical thickness and subvolume measures. One hundred boostraped sets were generated, on which partial least squares regression was applied with subvolume as the outcome and cortical thickness as the predictor, using 5-fold cross validation. The optimal number of components was calculated and the beta coefficients were averaged across all 100 datasets. The following heat map summarizes the significant associations.
+
+```{r heatmap, fig.height=8, fig.width=10, fig.align="center", message = FALSE, echo = FALSE, warning=FALSE,}
+heatmap.2(thresh, scale="none",trace='none',col=bluered(200),
+          breaks=c(-100:100)/100*5, margins = c(15,22), dendrogram = "none")
+```

@@ -1,0 +1,159 @@
+---
+title: "Applying Partial Least Squares Regression (PLSR) To Explore Associations Between Cortical Thickness and Subvolume Using ADNI Data"
+author: "Melissa Nunez"
+date: "10/14/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r Data Preparation, include = FALSE}
+library(caret)
+library(pls)
+library(ggplot2)
+library(readxl)
+library(knitr)
+library(kableExtra)
+library(gplots)
+
+ADNI_Set1 <- read_excel("/Users/user/Desktop/WorkDirectory/imputation/ADNI/dataset/ADNI\ 6\ datasets\ creation\ 2018_06_04.xlsx", sheet = 2)
+
+# Subset
+ADNI_Set1 <- ADNI_Set1[which(ADNI_Set1$dataset1 == 1 & ADNI_Set1$month_dataset1 == 0),]
+head(ADNI_Set1,10)
+
+# Group variables
+CT <- grep("CT",names(ADNI_Set1))
+SV <- grep("SV_",names(ADNI_Set1))
+SV <- SV[17:66]
+
+names(ADNI_Set1)[343]
+length(SV)
+
+# Some more subsetting
+CT_Set <- data.frame(ADNI_Set1[,CT])
+SV_Set <- data.frame(ADNI_Set1[,SV])
+head(CT_Set, 10)
+
+```
+
+
+```{r Bootstrap, include = FALSE, echo= FALSE}
+# Bootstrap the data 100 times. Resamples is a list with 100 elements, each element has the indices of one boostrap set
+set.seed(001)
+resamples <- lapply(1:100, function(i) sample(nrow(ADNI_Set1), replace = T))
+typeof(as.matrix(SV_Set[resamples[[1]],]))
+
+```
+
+
+
+```{r Analysis, echo=FALSE, include = FALSE}
+# Create function that runs plsr for each boostrap dataset, and gives the beta coefficients  for each regression based on the optimal number of components
+plsr_opt_coef <- function(x,y,nums)
+  {
+
+j=1
+l <- list()
+
+for (i in 1:length(nums)) {
+
+x_boot <- as.matrix(x[nums[[i]],])
+y_boot <- as.matrix(y[nums[[i]],])
+  
+org_mod <- plsr(y_boot~x_boot, ncomp = 10, validation = "CV", segments = 5)
+
+numcomps <- data.frame(sapply(1:10, function(x)(rowSums(data.frame(MSEP(org_mod, ncomp = x, intercept = FALSE)$val))/length(colnames(y)))[1]))
+numcomps <- (cbind(c(1:10),numcomps))
+names(numcomps) <- c("ncomp","Avg_MSEP")
+min <- min(numcomps[,2])
+opt_ncomps <- numcomps[numcomps$Avg_MSEP == min,][[1]]
+
+
+coef_model <- coef(org_mod, ncomp = opt_ncomps)
+
+l[[i]] <- coef_model
+    j <- j + 1
+    
+}
+
+list_opt_coefs <- l
+assign("list_opt_coefs",list_opt_coefs,.GlobalEnv)
+
+}
+
+
+# Run plsr function
+opt_coef_model <- plsr_opt_coef(CT_Set, SV_Set, resamples)
+
+
+# Calculate mean and standard deviation for coefficients
+vec <- unlist(list_opt_coefs, use.names = FALSE)
+DIM <- dim(list_opt_coefs[[1]])
+n <- length(list_opt_coefs)
+
+list.mean <- tapply(vec, rep(1:prod(DIM),times = n), mean)
+attr(list.mean, "dim") <- DIM
+list.mean <- as.data.frame(list.mean)
+
+list.sd <- tapply(vec, rep(1:prod(DIM),times = n), sd)
+attr(list.sd, "dim") <- DIM
+list.sd <- as.data.frame(list.sd)
+
+# Calculate z-score for coefficients
+z.score_mat <- list.mean/list.sd
+dim(z.score_mat)
+
+# Rename columns
+colnames(z.score_mat) <- colnames(SV_Set)
+rownames(z.score_mat) <- colnames(CT_Set)
+
+# Create matrix of significant coefficients
+thresh <- as.matrix(z.score_mat)
+thresh[abs(thresh)<1.96] <- 0
+thresh <- thresh[as.logical(rowSums(thresh != 0)), as.logical(colSums(thresh != 0))]
+```
+
+
+
+#### Descriptive Statistics: Gender and Education
+```{r report, echo = FALSE, warning=FALSE, message = FALSE}
+# Summary table of gender and Education
+Count.Gender <- addmargins(table(ADNI_Set1$PTGENDER))
+Count.Gender <- data.frame(c(1,2,"Total"), c(754,616,1370))
+colnames(Count.Gender) <- c("Gender","Count")
+Count.Gender %>%
+  kable() %>%
+    kable_styling(bootstrap_options = "striped")
+
+Count.Edu <- addmargins(table(ADNI_Set1$EDU))
+Count.Edu <- data.frame(c("High","Low","Total"), c(1168,202,1370))
+colnames(Count.Edu) <- c("Education","Count")
+Count.Edu %>%
+  kable() %>%
+    kable_styling(bootstrap_options = "striped")
+
+```
+
+
+#### Age Summary
+```{r statreport, echo = FALSE, warning=FALSE, message = FALSE}
+# Summary of Age at Baseline (Table)
+Age.Summary <- data.frame(as.matrix(summary(ADNI_Set1$Age_at_baseline)))
+colnames(Age.Summary) <- c("Baseline Age")
+Age.Summary %>%
+  kable() %>%
+    kable_styling(bootstrap_options = "striped")
+```
+
+ADNI data was used to explore associations between cortical thickness and subvolume measures. One hundred boostraped sets were generated. On each dataset, partial least squares regression was applied with subvolume measures as the outcomes and cortical thickness measures as the predictors. 5-fold cross validation was used to determine the optimal number of components that should be used for each set of outcomes. Beta coefficients were averaged across all 100 datasets and standardized. The following heat map summarizes the significant associations.
+
+```{r heatmap, fig.height=8, fig.width=13, fig.align="center", echo = FALSE, warning=FALSE, message = FALSE}
+heatmap.2(thresh, scale="none",trace='none',col=bluered(200),
+          breaks=c(-100:100)/100*5, margins = c(14,14), dendrogram = "none", xlab = "Subvolume", ylab = "Cortical Thickness", key.par=list(mar=c(6,6,6,6)))
+```
+
+
