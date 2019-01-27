@@ -1,5 +1,5 @@
 ---
-title: "Applying Partial Least Squares Regression (PLSR) To Explore Associations Between Cortical Thickness and Subvolume Using ADNI Data"
+title: "Applying Partial Least Squares Regression (PLSR) To Explore Associations Between Cortical Thickness and SubCortical Volume Using ADNI Data"
 author: "Melissa Nunez"
 date: "10/14/2018"
 output: pdf_document
@@ -149,7 +149,7 @@ Age.Summary %>%
     kable_styling(bootstrap_options = "striped")
 ```
 
-ADNI data was used to explore associations between cortical thickness and subvolume measures. One hundred boostraped sets were generated. On each dataset, partial least squares regression was applied with subvolume measures as the outcomes and cortical thickness measures as the predictors. 5-fold cross validation was used to determine the optimal number of components that should be used for each set of outcomes. Beta coefficients were averaged across all 100 datasets and standardized. The following heat map summarizes the significant associations.
+ADNI data was used to explore associations between cortical thickness and subcortical volume measures. One hundred boostraped sets were generated. On each dataset, partial least squares regression was applied with subcortical volume measures as the outcomes and cortical thickness measures as the predictors. 5-fold cross validation was used to determine the optimal number of components that should be used for each set of outcomes. Beta coefficients from the regression model were averaged across all 100 datasets and standardized. The following heat map summarizes the significant associations.
 
 ```{r heatmap, fig.height=8, fig.width=13, fig.align="center", echo = FALSE, warning=FALSE, message = FALSE}
 heatmap.2(thresh, scale="none",trace='none',col=bluered(200),
